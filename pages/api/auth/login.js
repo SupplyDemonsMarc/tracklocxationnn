@@ -17,36 +17,13 @@ export default async function handler(req, res) {
     }
 
     if (type === 'admin') {
-      let admin = await Admin.findOne({ username });
+      const admin = await Admin.findOne({ username }).select('+password');
 
-      // AUTO-CREATE ADMIN KALO BELOM ADA
       if (!admin) {
-        const envUsername = process.env.ADMIN_USERNAME || 'admin_master';
-        const envPassword = process.env.ADMIN_PASSWORD || 'rahasia123';
-
-        if (username === envUsername && password === envPassword) {
-          admin = new Admin({
-            username: envUsername,
-            password: envPassword,
-            role: 'superadmin'
-          });
-          await admin.save();
-          console.log('✅ Admin auto-created');
-        } else {
-          return res.status(401).json({ error: 'Invalid credentials' });
-        }
+        return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      // Bandingin password — bisa plain ATAU hash
-      let isMatch = false;
-      
-      // Coba bandingin pake bcrypt (kalo udah di-hash)
-      if (admin.password.startsWith('$2a$') || admin.password.startsWith('$2b$')) {
-        isMatch = await admin.comparePassword(password);
-      } else {
-        // Kalo masih plain text, bandingin langsung
-        isMatch = admin.password === password;
-      }
+      const isMatch = await admin.comparePassword(password);
 
       if (!isMatch) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -111,6 +88,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal server error', details: error.message });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
