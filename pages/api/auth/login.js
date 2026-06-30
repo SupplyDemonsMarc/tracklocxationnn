@@ -17,9 +17,38 @@ export default async function handler(req, res) {
     }
 
     if (type === 'admin') {
-      const admin = await Admin.findOne({ username }).select('+password');
+      let admin = await Admin.findOne({ username });
+
+      // AUTO-CREATE ADMIN KALO BELOM ADA
+      if (!admin) {
+        const envUsername = process.env.ADMIN_USERNAME || 'admin_master';
+        const envPassword = process.env.ADMIN_PASSWORD || 'rahasia123';
+
+        if (username === envUsername && password === envPassword) {
+          admin = new Admin({
+            username: envUsername,
+            password: envPassword,
+            role: 'superadmin'
+          });
+          await admin.save();
+          console.log('✅ Admin auto-created');
+        } else {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+      }
+
+      // Bandingin password — bisa plain ATAU hash
+      let isMatch = false;
       
-      if (!admin || !(await admin.comparePassword(password))) {
+      // Coba bandingin pake bcrypt (kalo udah di-hash)
+      if (admin.password.startsWith('$2a$') || admin.password.startsWith('$2b$')) {
+        isMatch = await admin.comparePassword(password);
+      } else {
+        // Kalo masih plain text, bandingin langsung
+        isMatch = admin.password === password;
+      }
+
+      if (!isMatch) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
@@ -36,7 +65,7 @@ export default async function handler(req, res) {
       });
 
       res.setHeader('Set-Cookie', `admin_token=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`);
-      
+
       return res.status(200).json({
         success: true,
         token,
@@ -49,7 +78,7 @@ export default async function handler(req, res) {
 
     if (type === 'user') {
       const user = await User.findOne({ username });
-      
+
       if (!user || user.password !== password) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
@@ -82,6 +111,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 }
